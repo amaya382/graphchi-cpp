@@ -118,6 +118,15 @@ struct PagerankProgram : public GraphChiProgram<VertexDataType, EdgeDataType> {
                 }
             }
 
+            /*
+            volatile long x = 0;
+            for(long i = 0; i < 5000; i++){
+                x++;
+                x--;
+            }
+*/
+            //std::cout << "a" << std::endl;
+
             float diff = std::abs(pagerank - v.get_data());
             int thread_num = omp_get_thread_num();
             if(ginfo.deltas[thread_num] < diff){
@@ -203,6 +212,7 @@ int main(int argc, const char ** argv) {
     engine.set_modifies_inedges(false); // Improves I/O performance.
     
     bool inmemmode = engine.num_vertices() * sizeof(EdgeDataType) < (size_t)engine.get_membudget_mb() * 1024L * 1024L;
+    inmemmode = false;
     if (inmemmode) {
         logstream(LOG_INFO) << "Running Pagerank by holding vertices in-memory mode!" << std::endl;
         engine.set_modifies_outedges(false);

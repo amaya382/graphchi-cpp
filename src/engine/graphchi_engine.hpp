@@ -39,6 +39,8 @@
 #include <assert.h>
 #include <omp.h>
 #include <vector>
+#include <map>
+#include <mutex>
 #include <sys/time.h>
 
 #include "api/chifilenames.hpp"
@@ -297,6 +299,7 @@ namespace graphchi {
          * keep running from memory.
          */
         virtual bool is_inmemory_mode() {
+            return false;
             return (nshards == 1 && num_vertices() < 2 * maxwindow); // Do not switch to in-memory mode if num of vertices too high. Ugly heuristic.
         }
         
@@ -408,11 +411,14 @@ namespace graphchi {
                 for(int idx=0; idx <= (int)sub_interval_len; idx++) random_order[idx] = idx;
                 std::random_shuffle(random_order.begin(), random_order.end());
             }
-             
+            std::cout << "e: " << enable_deterministic_parallelism << std::endl;
             do {
                 omp_set_num_threads(exec_threads);
-                
-        #pragma omp parallel sections 
+
+                std::mutex mu;
+                int safe_count = 0;
+
+        #pragma omp parallel sections
                     {
         #pragma omp section
                         {
@@ -424,15 +430,50 @@ namespace graphchi {
                                 if (exec_threads == 1 || v.parallel_safe) {
                                     if (!disable_vertexdata_storage)
                                         v.dataptr = vertex_data_handler->vertex_data_ptr(vid);
-                                    if (v.scheduled) 
+                                    if (v.scheduled) {
                                         userprogram.update(v, chicontext);
+
+                                        mu.lock();
+                                        safe_count++;
+                                        mu.unlock();
+                                    }
                                 }
                             }
                         }
-        #pragma omp section
+
+                        #pragma omp section
                         {
+                            int nonsafe_count = 0;
+
                             if (exec_threads > 1 && enable_deterministic_parallelism) {
-                                int nonsafe_count = 0;
+                            /*
+                                std::map<int, std::vector<int>> nonsafes;
+
+                                for(int idx = 0; idx <= sub_interval_len; idx++){
+                                    vid_t vid = sub_interval_st + (randomization ? random_order[idx] : idx);
+                                    svertex_t & v = vertices[vid - sub_interval_st];
+                                    if (!v.parallel_safe && v.scheduled && v.num_outedges() > 0) {
+                                        int dest = v.outedge(0)->vertex_id();
+                                        nonsafes[dest].emplace_back(vid);
+                                    }
+                                }
+
+#pragma omp parallel
+                                {
+#pragma omp single
+                                    for (auto vids = nonsafes.begin(); vids != nonsafes.end(); vids++) {
+#pragma omp task
+                                        for (auto vid : vids->second) {
+                                            auto v = vertices[vid - sub_interval_st];
+                                            if (!disable_vertexdata_storage)
+                                                v.dataptr = vertex_data_handler->vertex_data_ptr(vid);
+                                            userprogram.update(v, chicontext);
+                                            nonsafe_count++;
+                                        }
+                                    }
+                                }
+*/
+///*
                                 for(int idx=0; idx <= (int)sub_interval_len; idx++) {
                                     vid_t vid = sub_interval_st + (randomization ? random_order[idx] : idx);
                                     svertex_t & v = vertices[vid - sub_interval_st];
@@ -443,7 +484,13 @@ namespace graphchi {
                                         nonsafe_count++;
                                     }
                                 }
-                                
+//                                */
+
+
+                                std::cout << "safex: " << nonsafe_count - sub_interval_len << std::endl;
+                                std::cout << "safe: " << safe_count << std::endl;
+                                std::cout << "nonsafe: " << nonsafe_count << std::endl;
+                                std::cout << "threads: " << omp_get_num_threads() << std::endl;
                                 m.add("serialized-updates", nonsafe_count);
                             }
                         }
