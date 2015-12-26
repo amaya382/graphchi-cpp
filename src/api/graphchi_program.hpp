@@ -84,7 +84,47 @@ namespace graphchi {
         /**
          * Update function.
          */
-        virtual void update(vertex_t &v, graphchi_context &gcontext)  = 0;    
+        virtual void update(vertex_t &v, graphchi_context &gcontext)  = 0;
+
+
+
+
+
+
+        virtual VertexDataType init(graphchi_context &info, vertex_t& myvertex) {
+            VertexDataType dummy;
+            return dummy;
+        };
+
+        // Called before first "gather"
+        virtual VertexDataType zero() {
+            VertexDataType dummy;
+            return dummy;
+        };
+
+        // "Gather"
+        virtual VertexDataType gather(graphchi_context &info, VertexDataType nbval) {
+            VertexDataType dummy;
+            return dummy;
+        };
+
+        // "Sum"
+        virtual VertexDataType sum(VertexDataType curval, VertexDataType toadd) {
+            VertexDataType dummy;
+            return dummy;
+        };
+
+        // "Apply"
+        virtual VertexDataType apply(graphchi_context &ginfo, vertex_t& myvertex, VertexDataType nbvalsum) {
+            VertexDataType dummy;
+            return dummy;
+        };
+
+        // "Scatter
+        virtual VertexDataType scatter(graphchi_context &info, vertex_t& myvertex, vid_t nbid, VertexDataType myval) {
+            VertexDataType dummy;
+            return dummy;
+        };
     };
 
 }

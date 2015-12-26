@@ -42,7 +42,8 @@
 #include "api/ischeduler.hpp"
 #include "api/vertex_aggregator.hpp"
 
-#include "engine/graphchi_engine.hpp"
+//#include "engine/graphchi_engine.hpp"
+#include "engine/graphchi_engine_new.hpp"
 
 #include "logger/logger.hpp"
 
