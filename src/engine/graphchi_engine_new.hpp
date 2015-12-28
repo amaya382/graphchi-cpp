@@ -40,6 +40,7 @@
 #include <omp.h>
 #include <vector>
 #include <map>
+#include <functional>
 #include <sys/time.h>
 
 #include "api/chifilenames.hpp"
@@ -394,6 +395,39 @@ namespace graphchi {
             /* Wait for all reads to complete */
             iomgr->wait_for_reads();
         }
+
+        template<typename KeyType, typename ValType>
+        std::map<KeyType, ValType> merge(std::map<KeyType, ValType> m1, std::map<KeyType, ValType> m2, std::function<ValType(ValType v1, ValType v2)> binary_op) {
+            for (auto itr = m2.begin(); itr != m2.end(); itr++)
+                m1[itr->first] =
+                        m1.find(itr->first) == m1.end()
+                        ? itr->second //new
+                        : binary_op(m1[itr->first], itr->second); //add
+            return m1;
+        }
+
+        template<typename KeyType, typename ValType>
+        std::map<KeyType, ValType> fold(std::vector<std::map<KeyType, ValType>> col, std::function<ValType(ValType v1, ValType v2)> binary_op) {
+            int size = col.size();
+            if (size == 0) {
+                std::map <KeyType, ValType> dummy;
+                return dummy;
+            } else if (size == 1) {
+                return col[0];
+            } else if (size == 2) {
+                return merge(col[0], col[1], binary_op);
+            } else {
+                bool is_odd = size % 2 != 0;
+                std::vector<std::map<KeyType, ValType>> res(is_odd ? size / 2 + 1 : size / 2);
+#pragma omp parallel for
+                for (int i = 0; i < size - 1; i += 2) {
+                    res[i / 2] = merge(col[i], col[i + 1], binary_op);
+                }
+                if(is_odd)
+                    res[size / 2 + 1] = col.back();
+                return fold(res, binary_op);
+            }
+        }
         
         virtual void exec_updates(GraphChiProgram<VertexDataType, EdgeDataType, svertex_t> &userprogram,
                           std::vector<svertex_t> &vertices) {
@@ -411,14 +445,19 @@ namespace graphchi {
                 std::random_shuffle(random_order.begin(), random_order.end());
             }
 
+#define SEQ
             do {
                 omp_set_num_threads(exec_threads);
 
-                //#pragma omp parallel sections
+#ifdef SEQ
+#pragma omp parallel sections
+#endif
                 {
-                    //#pragma omp section
+#ifdef SEQ
+#pragma omp section
+#endif
                     {
-                        std::vector < std::map < int, std::vector < int >> > nonsafes(omp_get_max_threads());
+                        std::vector<std::map<int, std::vector<int>>> nonsafes(omp_get_max_threads());
 #pragma omp parallel for
                         for (int idx = 0; idx <= (int) sub_interval_len; idx++) {
                             vid_t vid = sub_interval_st + (randomization ? random_order[idx] : idx);
@@ -429,9 +468,61 @@ namespace graphchi {
                                 userprogram.init(chicontext, v);
                             } else if (exec_threads == 1 || v.parallel_safe) {
                                 if (v.scheduled) {
+                                    VertexDataType res = userprogram.zero();
+                                    for (auto i = 0; i < v.num_inedges(); i++) {
+                                        res = userprogram.sum(res,
+                                                              userprogram.gather(chicontext, v.inedge(i)->get_data()));
+                                    }
+                                    userprogram.apply(chicontext, v, res);
+                                }
+                            }
+#ifndef SEQ
+                            else if (!v.parallel_safe && v.scheduled && v.num_outedges() > 0) {
+                                int dest = v.outedge(0)->vertex_id();
+                                nonsafes[omp_get_thread_num()][dest].emplace_back(vid);
+                            }
+#endif
+                        }
+#ifndef SEQ
+                        int nonsafe_count = 0;
+//#define MERGE
+#ifdef MERGE
+                        //merge-based
+                        //considering nonsafes[0] and nonsafes[1] to be able to faster
+                        //can multi-thread op
+                        std::map<int, std::vector<int>> merged;
+//#define NAIVE_MARGE
+#ifdef NAIVE_MERGE
+                        auto size = nonsafes.size();
+                        for (int i = 0; i < size; i++)
+                            for (auto itr = nonsafes[i].begin(); itr != nonsafes[i].end(); itr++)
+                                if (merged.find(itr->first) == nonsafes[i].end())//new
+                                    merged[itr->first] = itr->second;
+                                else//add
+                                    std::copy(itr->second.begin(),
+                                              itr->second.end(),
+                                              std::back_inserter(merged[itr->first]));
+
+#else
+                        merged = fold<int, std::vector<int>>(nonsafes,
+                            [&](std::vector<int> v1, std::vector<int> v2)->std::vector<int>{
+                                std::copy(v2.begin(), v2.end(), std::back_inserter(v1));
+                                return v1;
+                            });
+#endif
+
+#pragma omp parallel
+                        {
+#pragma omp single
+                            for (auto vids = merged.begin(); vids != merged.end(); vids++) {
+#pragma omp task
+                                for (auto vid : vids->second) {
+                                    auto v = vertices[vid - sub_interval_st];
+                                    if (!disable_vertexdata_storage)
+                                        v.dataptr = vertex_data_handler->vertex_data_ptr(vid);
+
                                     std::vector <VertexDataType> v_mid_data;
                                     VertexDataType res = userprogram.zero();
-
                                     for (auto i = 0; i < v.num_inedges(); i++) {
                                         v_mid_data.emplace_back(userprogram.gather(
                                                 chicontext,
@@ -441,59 +532,12 @@ namespace graphchi {
                                         res = userprogram.sum(res, g);
                                     }
                                     userprogram.apply(chicontext, v, res);
+                                    nonsafe_count++;
                                 }
-                            }
-                                ///*
-                            else if (!v.parallel_safe && v.scheduled && v.num_outedges() > 0) {
-                                int dest = v.outedge(0)->vertex_id();
-                                nonsafes[omp_get_thread_num()][dest].emplace_back(vid);
-                            }
-                            //*/
-                        }
-///*
-                        int nonsafe_count = 0;
-#define MERGE
-#ifdef MERGE
-                        //considering nonsafes[0] and nonsafes[1] to be able to faster
-                        //can multi-thread op
-                    std::map<int, std::vector<int>> merged;
-
-                        auto size = nonsafes.size();
-                        for(int i = 0; i < size; i++)
-                            for(auto itr = nonsafes[i].begin(); itr != nonsafes[i].end(); itr++)
-                                if(merged.find(itr->first) == nonsafes[i].end())//new
-                                    merged[itr->first] = itr->second;
-                                else//add
-                                    std::copy(itr->second.begin(),
-                                              itr->second.end(),
-                                              std::back_inserter(merged[itr->first]));
-
-#pragma omp parallel
-                    {
-#pragma omp single
-                        for (auto vids = merged.begin(); vids != merged.end(); vids++) {
-#pragma omp task
-                            for (auto vid : vids->second) {
-                                auto v = vertices[vid - sub_interval_st];
-                                if (!disable_vertexdata_storage)
-                                    v.dataptr = vertex_data_handler->vertex_data_ptr(vid);
-
-                                std::vector<VertexDataType> v_mid_data;
-                                VertexDataType res = userprogram.zero();
-                                for(auto i = 0; i < v.num_inedges(); i++){
-                                    v_mid_data.emplace_back(userprogram.gather(
-                                            chicontext,
-                                            v.inedge(i)->get_data()));
-                                }
-                                for(auto g : v_mid_data){
-                                    res = userprogram.sum(res, g);
-                                }
-                                userprogram.apply(chicontext, v, res);
-                                nonsafe_count++;
                             }
                         }
-                    }
 #else
+                        //大規模マージなし
                         //{<vid, data>, <vid, data>, <vid, data>, <vid, data>}
                         std::vector <std::map<int, VertexDataType>> mids(omp_get_max_threads());
 #pragma omp parallel for
@@ -542,84 +586,79 @@ namespace graphchi {
                         }
 #endif
                         m.add("serialized-updates", nonsafe_count);
-//*/
+#endif
                     }
-/*
-                        #pragma omp section
-                        {
-                            int nonsafe_count = 0;
+#ifdef SEQ
+#pragma omp section
+                    {
+                        int nonsafe_count = 0;
 
-                            if (exec_threads > 1 && enable_deterministic_parallelism) {
+                        if (exec_threads > 1 && enable_deterministic_parallelism) {
 #define FEATURE
 #ifdef FEATURE
-                                std::map<int, std::vector<int>> nonsafes;
+                            //頂点レベルの並列化
+                            std::map<int, std::vector<int>> nonsafes;
 
-                                for(int idx = 0; idx <= sub_interval_len; idx++){
-                                    vid_t vid = sub_interval_st + (randomization ? random_order[idx] : idx);
-                                    svertex_t & v = vertices[vid - sub_interval_st];
-                                    if (!v.parallel_safe && v.scheduled && v.num_outedges() > 0) {
-                                        int dest = v.outedge(0)->vertex_id();
-                                        nonsafes[dest].emplace_back(vid);
-                                    }
+                            for(int idx = 0; idx <= sub_interval_len; idx++){
+                                vid_t vid = sub_interval_st + (randomization ? random_order[idx] : idx);
+                                svertex_t & v = vertices[vid - sub_interval_st];
+                                if (!v.parallel_safe && v.scheduled && v.num_outedges() > 0) {
+                                    int dest = v.outedge(0)->vertex_id();
+                                    nonsafes[dest].emplace_back(vid);
                                 }
+                            }
 
 #pragma omp parallel
-                                {
+                            {
 #pragma omp single
-                                    for (auto vids = nonsafes.begin(); vids != nonsafes.end(); vids++) {
+                                for (auto vids = nonsafes.begin(); vids != nonsafes.end(); vids++) {
 #pragma omp task
-                                        for (auto vid : vids->second) {
-                                            auto v = vertices[vid - sub_interval_st];
-                                            if (!disable_vertexdata_storage)
-                                                v.dataptr = vertex_data_handler->vertex_data_ptr(vid);
-
-                                            std::vector<VertexDataType> v_mid_data;
-                                            VertexDataType res = userprogram.zero();
-                                            for(auto i = 0; i < v.num_inedges(); i++){
-                                                v_mid_data.emplace_back(userprogram.gather(
-                                                    chicontext,
-                                                    v.inedge(i)->get_data()));
-                                            }
-                                            for(auto g : v_mid_data){
-                                                res = userprogram.sum(res, g);
-                                            }
-                                            userprogram.apply(chicontext, v, res);
-                                            nonsafe_count++;
-                                        }
-                                    }
-                                }
-#else
-                                for(int idx=0; idx <= (int)sub_interval_len; idx++) {
-                                    vid_t vid = sub_interval_st + (randomization ? random_order[idx] : idx);
-                                    svertex_t & v = vertices[vid - sub_interval_st];
-                                    if (!v.parallel_safe && v.scheduled) {
+                                    for (auto vid : vids->second) {
+                                        auto v = vertices[vid - sub_interval_st];
                                         if (!disable_vertexdata_storage)
                                             v.dataptr = vertex_data_handler->vertex_data_ptr(vid);
-                                        userprogram.update(v, chicontext);
+
+                                        std::vector<VertexDataType> v_mid_data;
+                                        VertexDataType res = userprogram.zero();
+                                        for(auto i = 0; i < v.num_inedges(); i++){
+                                            v_mid_data.emplace_back(userprogram.gather(
+                                                chicontext,
+                                                v.inedge(i)->get_data()));
+                                        }
+                                        for(auto g : v_mid_data){
+                                            res = userprogram.sum(res, g);
+                                        }
+                                        userprogram.apply(chicontext, v, res);
                                         nonsafe_count++;
                                     }
                                 }
-#endif
-
-
-#ifdef FEATURE
-                                std::cout << "feature" << std::endl;
-#else
-                                std::cout << "not feature" << std::endl;
-#endif
-                                std::cout << "safe: " << sub_interval_len - nonsafe_count << std::endl;
-                                std::cout << "nonsafe: " << nonsafe_count << std::endl;
-                                std::cout << "threads: " << omp_get_num_threads() << std::endl;
-                                m.add("serialized-updates", nonsafe_count);
                             }
+#else
+                            //単純なシーケンシャル処理
+                            for (int idx = 0; idx <= (int) sub_interval_len; idx++) {
+                                vid_t vid = sub_interval_st + (randomization ? random_order[idx] : idx);
+                                svertex_t &v = vertices[vid - sub_interval_st];
+                                if (!v.parallel_safe && v.scheduled) {
+                                    if (!disable_vertexdata_storage)
+                                        v.dataptr = vertex_data_handler->vertex_data_ptr(vid);
+                                    userprogram.update(v, chicontext);
+                                    nonsafe_count++;
+                                }
+                            }
+#endif
+
+//                            std::cout << "safe: " << sub_interval_len - nonsafe_count << std::endl;
+//                            std::cout << "nonsafe: " << nonsafe_count << std::endl;
+//                            std::cout << "threads: " << omp_get_num_threads() << std::endl;
+                            m.add("serialized-updates", nonsafe_count);
                         }
-                    */
+                    }
+#endif
                 }
             } while (userprogram.repeat_updates(chicontext));
 
             m.stop_time(me, "execute-updates");
         }
-        
 
         /**
          Special method for running all iterations with the same vertex-vector.

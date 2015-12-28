@@ -118,7 +118,7 @@ struct PagerankProgram : public GraphChiProgram<VertexDataType, EdgeDataType> {
                 }
             }
 
-#define LOAD
+//#define LOAD
 #ifdef LOAD
             volatile long x = 0;
             for(long i = 0; i < 500; i++){
