@@ -147,7 +147,7 @@ struct PagerankProgram : public GraphChiProgram<VertexDataType, EdgeDataType> {
             auto edge = myvertex.outedge(i);
             edge->set_data(1.0 / myvertex.num_outedges());
         }
-        myvertex.set_data(RANDOMRESETPROB);
+        myvertex.set_data(1.0);
         return 1.0;
     }
 
@@ -199,7 +199,6 @@ int main(int argc, const char ** argv) {
     /* Run */
     graphchi_engine_new<float, float> engine(filename, nshards, scheduler, m);
     engine.set_modifies_inedges(false); // Improves I/O performance.
-    
 
         PagerankProgram program;
         engine.run(program, niters);

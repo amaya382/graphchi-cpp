@@ -445,7 +445,7 @@ namespace graphchi {
                 std::random_shuffle(random_order.begin(), random_order.end());
             }
 
-#define SEQ
+//#define SEQ
             do {
                 omp_set_num_threads(exec_threads);
 
@@ -457,18 +457,28 @@ namespace graphchi {
 #pragma omp section
 #endif
                     {
+                        auto zero = userprogram.zero();
+#define PROP
+#ifndef PROP
                         std::vector<std::map<int, std::vector<int>>> nonsafes(omp_get_max_threads());
+#else
+                        std::vector<VertexDataType> data_map(sub_interval_len, zero);
+#endif
 #pragma omp parallel for
-                        for (int idx = 0; idx <= (int) sub_interval_len; idx++) {
+                        for (int idx = 0; idx < sub_interval_len; idx++) {//need "=" ???
                             vid_t vid = sub_interval_st + (randomization ? random_order[idx] : idx);
-                            svertex_t &v = vertices[vid - sub_interval_st];
+                            svertex_t &v = vertices[vid - sub_interval_st];//`vid - sub_interval_st` is vid in each interval
                             if (!disable_vertexdata_storage)
                                 v.dataptr = vertex_data_handler->vertex_data_ptr(vid);
                             if (chicontext.iteration == 0) {
                                 userprogram.init(chicontext, v);
                             } else if (exec_threads == 1 || v.parallel_safe) {
                                 if (v.scheduled) {
-                                    VertexDataType res = userprogram.zero();
+                                    auto edge_data = userprogram.scatter(chicontext, v, vid, v.get_data());
+                                    for (int i = 0; i < v.num_outedges(); i++)
+                                        v.outedge(i)->set_data(edge_data);
+
+                                    VertexDataType res = zero;
                                     for (auto i = 0; i < v.num_inedges(); i++) {
                                         res = userprogram.sum(res,
                                                               userprogram.gather(chicontext, v.inedge(i)->get_data()));
@@ -477,10 +487,20 @@ namespace graphchi {
                                 }
                             }
 #ifndef SEQ
+#ifndef PROP
                             else if (!v.parallel_safe && v.scheduled && v.num_outedges() > 0) {
                                 int dest = v.outedge(0)->vertex_id();
-                                nonsafes[omp_get_thread_num()][dest].emplace_back(vid);
+                                nonsafes[omp_get_thread_num()][dest].emplace_back(vid);//wrong
                             }
+#else
+                            else if (!v.parallel_safe && v.scheduled) {
+                                //data_map for lazy apply(mimicking BSP)
+                                for(auto i = 0; i < v.num_inedges(); i++)
+                                    data_map[vid - sub_interval_st] =
+                                        userprogram.sum(data_map[vid - sub_interval_st],
+                                            userprogram.gather(chicontext, v.inedge(i)->get_data()));
+                            }
+#endif
 #endif
                         }
 #ifndef SEQ
@@ -537,6 +557,7 @@ namespace graphchi {
                             }
                         }
 #else
+#ifndef PROP
                         //大規模マージなし
                         //{<vid, data>, <vid, data>, <vid, data>, <vid, data>}
                         std::vector <std::map<int, VertexDataType>> mids(omp_get_max_threads());
@@ -584,6 +605,21 @@ namespace graphchi {
                             userprogram.apply(chicontext, v, itr->second);
                             nonsafe_count++;
                         }
+#else
+                        //for(auto d : data_map)
+                            //std::cout << d << std::endl;
+#pragma omp parallel for
+                        for(int idx = 0; idx < sub_interval_len; idx++){
+                            if(data_map[idx] == userprogram.zero()) continue;//skip safe node
+
+                            auto vid = sub_interval_st + (randomization ? random_order[idx] : idx);
+                            auto internal_id = vid - sub_interval_st;
+                            auto &v = vertices[internal_id];
+                            if (!disable_vertexdata_storage)
+                                v.dataptr = vertex_data_handler->vertex_data_ptr(vid);
+                            userprogram.apply(chicontext, v, data_map[internal_id]);
+                        }
+#endif
 #endif
                         m.add("serialized-updates", nonsafe_count);
 #endif
@@ -594,7 +630,7 @@ namespace graphchi {
                         int nonsafe_count = 0;
 
                         if (exec_threads > 1 && enable_deterministic_parallelism) {
-#define FEATURE
+//#define FEATURE
 #ifdef FEATURE
                             //頂点レベルの並列化
                             std::map<int, std::vector<int>> nonsafes;
