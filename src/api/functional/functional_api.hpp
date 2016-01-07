@@ -53,26 +53,21 @@ namespace graphchi {
       */
      template <typename FVertexDataType, typename FEdgeDataType>
      struct functional_kernel {
-        
+
         typedef FVertexDataType VertexDataType;
         typedef FEdgeDataType EdgeDataType;
-        
+
         functional_kernel() {}
-         
+
         /* Initial value - on first iteration */
-         virtual VertexDataType initial_value(graphchi_context &info, vertex_info& myvertex) = 0;        
+        virtual VertexDataType init(graphchi_context &ginfo, vertex_info& vertex) = 0;
         /* Called before first "gather" */
-         virtual VertexDataType reset()  = 0;        
-        // Note: Unweighted version, edge value should also be passed
-        // "Gather"
-        virtual EdgeDataType op_neighborval(graphchi_context &info, vertex_info& myvertex, vid_t nbid, EdgeDataType nbval)= 0;         
-        // "Sum"
-        virtual EdgeDataType plus(VertexDataType curval, EdgeDataType toadd) = 0;
-         // "Apply"
-        virtual VertexDataType compute_vertexvalue(graphchi_context &ginfo, vertex_info& myvertex, EdgeDataType nbvalsum) = 0;        
-        // "Scatter
-        virtual EdgeDataType value_to_neighbor(graphchi_context &info, vertex_info& myvertex, vid_t nbid, VertexDataType myval) = 0;        
-    }; 
+        virtual EdgeDataType zero() = 0;
+        virtual EdgeDataType gather(graphchi_context &ginfo, vertex_info& vertex, vid_t nbid, EdgeDataType nb_val)= 0;
+        virtual EdgeDataType plus(EdgeDataType acc, EdgeDataType toadd) = 0;
+        virtual VertexDataType apply(graphchi_context &ginfo, vertex_info& vertex, EdgeDataType sum) = 0;
+        virtual EdgeDataType scatter(graphchi_context &ginfo, vertex_info& vertex, vid_t nb_id, VertexDataType val) = 0;
+    };
 
     
     
@@ -102,8 +97,7 @@ namespace graphchi {
             typename FunctionalProgramProxySemisync<KERNEL>::EdgeDataType,
             typename FunctionalProgramProxySemisync<KERNEL>::fvertex_t > 
                 engine(filename, nshards, false, _m);
-        
-        
+
         engine.set_modifies_inedges(false); // Important
         engine.set_modifies_outedges(true); // Important
         engine.run(program, niters);
@@ -130,6 +124,7 @@ namespace graphchi {
             typename FunctionalProgramProxyBulkSync<KERNEL>::EdgeDataType,
             typename FunctionalProgramProxyBulkSync<KERNEL>::fvertex_t > 
                 engine(filename, nshards, false, _m);
+
         engine.set_modifies_inedges(false); // Important
         engine.set_modifies_outedges(true); // Important
         engine.set_enable_deterministic_parallelism(false); // Bulk synchronous does not need consistency.

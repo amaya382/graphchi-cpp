@@ -34,6 +34,10 @@
 #define RANDOMRESETPROB 0.15
 #define GRAPHCHI_DISABLE_COMPRESSION
 
+//#define HTM
+//#define RTM
+//#define HLE
+
 #include <string>
 #include <fstream>
 #include <cmath>
@@ -47,39 +51,31 @@ using namespace graphchi;
 
 struct pagerank_kernel : public functional_kernel<float, float> {
     
-    /* Initial value - on first iteration */
-    float initial_value(graphchi_context &info, vertex_info& myvertex) {
+    float init(graphchi_context &ginfo, vertex_info& vertex) {
         return 1.0;
     }
     
-    /* Called before first "gather" */
-    float reset() {
+    float zero() {
         return 0.0;
     }
     
-    // Note: Unweighted version, edge value should also be passed
-    // "Gather"
-    float op_neighborval(graphchi_context &info, vertex_info& myvertex, vid_t nbid, float nbval) {
-        return nbval;
+    float gather(graphchi_context &ginfo, vertex_info& vertex, vid_t nb_id, float nb_val) {
+        return nb_val;
     }
     
-    // "Sum"
-    float plus(float curval, float toadd) {
-        return curval + toadd;
+    float plus(float acc, float toadd) {
+        return acc + toadd;
     }
     
-    // "Apply"
-    float compute_vertexvalue(graphchi_context &ginfo, vertex_info& myvertex, float nbvalsum) {
+    float apply(graphchi_context &ginfo, vertex_info& vertex, float sum) {
         assert(ginfo.nvertices > 0);
-        return RANDOMRESETPROB / ginfo.nvertices + (1 - RANDOMRESETPROB) * nbvalsum;
+        return RANDOMRESETPROB + (1 - RANDOMRESETPROB) * sum;
     }
     
-    // "Scatter
-    float value_to_neighbor(graphchi_context &info, vertex_info& myvertex, vid_t nbid, float myval) {
-        assert(myvertex.outdegree > 0);
-        return myval / myvertex.outdegree; 
+    float scatter(graphchi_context &ginfo, vertex_info& vertex, vid_t nb_id, float val) {
+        assert(vertex.outdegree > 0);
+        return val / vertex.outdegree;
     }
-    
 }; 
 
 int main(int argc, const char ** argv) {
@@ -90,7 +86,7 @@ int main(int argc, const char ** argv) {
     int niters = get_option_int("niters", 4);
     bool onlytop = get_option_int("onlytop", 0);
     int ntop = get_option_int("top", 20);
-    std::string mode = get_option_string("mode", "semisync");
+    std::string mode = get_option_string("mode", "sync");
             
     if (onlytop == 0) {
         /* Run */

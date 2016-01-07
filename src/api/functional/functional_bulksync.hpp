@@ -36,6 +36,8 @@
 #define GRAPHCHI_FUNCTIONAL_BULKSYNC_DEF
 
 #include <assert.h>
+#include <immintrin.h>
+
 
 
 #include "api/graph_objects.hpp"
@@ -47,67 +49,104 @@
 
 namespace graphchi {
     
-    
     template <typename KERNEL>
-    class functional_vertex_unweighted_bulksync : public graphchi_vertex<typename KERNEL::VertexDataType, PairContainer<typename KERNEL::EdgeDataType> > {
+    class functional_vertex_unweighted_bulksync : public graphchi_vertex<typename KERNEL::VertexDataType, PairContainer<typename KERNEL::EdgeDataType>> {
     public:
-        
+
+        typedef typename KERNEL::EdgeDataType ET;
         typedef typename KERNEL::VertexDataType VT;
-        typedef PairContainer<typename KERNEL::EdgeDataType> ET;
-       
+        typedef PairContainer<typename KERNEL::EdgeDataType> P_ET;
+
         KERNEL kernel;
 
-        VT cumval;
+        ET acc;
         
         vertex_info vinfo;
         graphchi_context * gcontext;
         
-        functional_vertex_unweighted_bulksync() : graphchi_vertex<VT, ET> () {}
+        functional_vertex_unweighted_bulksync() : graphchi_vertex<VT, P_ET> () {}
         
         functional_vertex_unweighted_bulksync(graphchi_context &ginfo, vid_t _id, int indeg, int outdeg) : 
-        graphchi_vertex<VT, ET> (_id, NULL, NULL, indeg, outdeg) { 
+        graphchi_vertex<VT, P_ET> (_id, NULL, NULL, indeg, outdeg) {
             vinfo.indegree = indeg;
             vinfo.outdegree = outdeg;
             vinfo.vertexid = _id;
-            cumval = kernel.reset();
+            acc = kernel.zero();
             gcontext = &ginfo;
+        }
+
+        vid_t id() const {
+            return vinfo.vertexid;
         }
         
         functional_vertex_unweighted_bulksync(vid_t _id, 
-                                              graphchi_edge<ET> * iptr, 
-                                              graphchi_edge<ET> * optr, 
+                                              graphchi_edge<P_ET> * iptr,
+                                              graphchi_edge<P_ET> * optr,
                                               int indeg, 
                                               int outdeg) {
             assert(false); // This should never be called.
         }
         
         void first_iteration(graphchi_context &ginfo) {
-            this->set_data(kernel.initial_value(ginfo, vinfo));
+            this->set_data(kernel.init(ginfo, vinfo));
             gcontext = &ginfo;
         }
         
         // Optimization: as only memshard (not streaming shard) creates inedgers,
         // we do not need atomic instructions here!
-        inline void add_inedge(vid_t src, ET * ptr, bool special_edge) {
+        inline void add_inedge(vid_t src, P_ET * ptr, bool special_edge) {
             if (gcontext->iteration > 0) {
+                auto val = kernel.gather(*gcontext,
+                                                 vinfo,
+                                                 src,
+                                                 ptr->oldval(gcontext->iteration));
+#ifdef HTM
+#if !defined(RTM) && !defined(HLE)
+                __transaction_relaxed
+#else
+#ifdef RTM
+                retry:
+                int st = _xbegin();
+                if (st == _XBEGIN_STARTED) {
+#else
+#ifdef HLE
+                int lock;
+                while (__atomic_exchange_n(&lock, 1, __ATOMIC_ACQUIRE | __ATOMIC_HLE_ACQUIRE))
+                    _mm_pause();
+#endif
+#endif
+#endif
+#else
                 get_lock(vinfo.vertexid).lock();
-                cumval = kernel.plus(cumval, kernel.op_neighborval(*gcontext,
-                                                               vinfo, 
-                                                               src, 
-                                                               ptr->oldval(gcontext->iteration)));
+#endif
+                {
+                    acc = kernel.plus(acc, val);
+                }
+#ifdef HTM
+#ifdef RTM
+                    _xend();
+                } else {
+                    goto retry;
+                }
+#else
+#ifdef HLE
+                __atomic_clear(&lock, __ATOMIC_RELEASE | __ATOMIC_HLE_RELEASE);
+#endif
+#endif
+#else
                 get_lock(vinfo.vertexid).unlock();
-
+#endif
             }
         }
         
         void ready(graphchi_context &ginfo) {
-            this->set_data(kernel.compute_vertexvalue(*gcontext, vinfo, cumval));
+            this->set_data(kernel.apply(*gcontext, vinfo, acc));
         }
         
-        inline void add_outedge(vid_t dst, ET * ptr, bool special_edge) {
+        inline void add_outedge(vid_t dst, P_ET * ptr, bool special_edge) {
             typename KERNEL::EdgeDataType newval = 
-                kernel.value_to_neighbor(*gcontext, vinfo, dst, this->get_data());
-            ET paircont = *ptr;
+                kernel.scatter(*gcontext, vinfo, dst, this->get_data());
+            P_ET paircont = *ptr;
             paircont.set_newval(gcontext->iteration, newval);
             *ptr = paircont;
         }
@@ -167,9 +206,5 @@ namespace graphchi {
         }
         
     };
-    
 }
-
-
 #endif
-
