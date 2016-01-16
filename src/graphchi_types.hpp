@@ -20,6 +20,7 @@
 
 
 #include <stdint.h>
+#include <iostream>
 
 namespace graphchi {
     
@@ -56,6 +57,49 @@ namespace graphchi {
                 left = x;
             }
         }
+
+#ifdef DYNAMICEDATA
+        typedef typename ET::element_type_t element_type_t;
+        typedef uint32_t sizeword_t;
+
+
+        PairContainer(uint16_t sz, uint16_t cap, element_type_t * dataptr) {
+            int lsz = dataptr[0];
+            int lcsz = dataptr[1];
+            dataptr += 2;
+
+            //std::cout << "size: " << sizeof(element_type_t) << std::endl;
+            //std::cout << "lsz: " << lsz << ", rsz: " << (sz - lsz) << std::endl;
+            //std::cout << "lcsz: " << lcsz << ", rcsz: " << (cap - lcsz) << std::endl;
+
+
+            left = ET(lsz, lcsz, dataptr);
+            dataptr += lsz;
+            right = ET(sz - lsz, cap - lcsz, dataptr);
+        }
+
+
+        void write(element_type_t * dest){
+            int lsz = left.size();
+            int rsz = right.size();
+            dest[0] = lsz;
+            dest[1] = left.capacity();
+            for(int i = 0; i < lsz; i++){
+                std::cout << "left: " << left[i] << std::endl;
+                dest[i + 2] = left[i];
+            }
+            for(int i = 0; i < rsz; i++)
+                dest[lsz + i + 2] = right[i];
+        }
+
+        uint16_t size(){
+            return left.size() + right.size() + 2;
+        }
+
+        uint16_t capacity(){
+            return left.capacity() + right.capacity();
+        }
+#endif
     };
     
     struct shard_index {

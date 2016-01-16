@@ -180,6 +180,8 @@ namespace graphchi {
             blocksize =  1024 * 1024;
 #ifndef DYNAMICEDATA
             while (blocksize % sizeof(EdgeDataType) != 0) blocksize++;
+#else
+            blocksize = 1048608;
 #endif
             
             disable_vertexdata_storage = false;
@@ -258,17 +260,18 @@ namespace graphchi {
         virtual void initialize_sliding_shards() {
             assert(sliding_shards.size() == 0);
             for(int p=0; p < nshards; p++) {
+                std::cout << "engine2: " << sizeof(EdgeDataType) << std::endl;
+
 #ifndef DYNAMICEDATA
                 std::string edata_filename = filename_shard_edata<EdgeDataType>(base_filename, p, nshards);
                 std::string adj_filename = filename_shard_adj(base_filename, p, nshards);
 #else
-                std::string edata_filename = filename_shard_edata<int>(base_filename, p, nshards);
+                std::string edata_filename = filename_shard_edata<EdgeDataType>(base_filename, p, nshards);
                 std::string adj_filename = filename_shard_adj(base_filename, p, nshards);
 #endif
                 
-                
                 sliding_shards.push_back(
-                                         new slidingshard_t(iomgr, edata_filename, 
+                                         new slidingshard_t(iomgr, edata_filename,
                                                             adj_filename,
                                                             intervals[p].first, 
                                                             intervals[p].second, 
@@ -691,6 +694,7 @@ namespace graphchi {
         }
         
         virtual memshard_t * create_memshard(vid_t interval_st, vid_t interval_en) {
+            std::cout << "koko: " << base_filename << ", " << blocksize << std::endl;
 #ifndef DYNAMICEDATA
             return new memshard_t(this->iomgr,
                                   filename_shard_edata<EdgeDataType>(base_filename, exec_interval, nshards),  
@@ -701,7 +705,7 @@ namespace graphchi {
                                   m);
 #else
             return new memshard_t(this->iomgr,
-                                  filename_shard_edata<int>(base_filename, exec_interval, nshards),
+                                  filename_shard_edata<EdgeDataType>(base_filename, exec_interval, nshards),
                                   filename_shard_adj(base_filename, exec_interval, nshards),
                                   interval_st,
                                   interval_en,
@@ -760,10 +764,12 @@ namespace graphchi {
             } else {
                 logstream(LOG_DEBUG) << "Engine being restarted, do not reinitialize." << std::endl;
             }
-                
+            std::cout << "calllll" << std::endl;
+
             initialize_scheduler();
             omp_set_nested(1);
-            
+            std::cout << "calllll2" << std::endl;
+
             /* Install a 'mock'-scheduler to chicontext if scheduler
              is not used. */
             chicontext.scheduler = scheduler;
@@ -773,8 +779,9 @@ namespace graphchi {
             
             /* Print configuration */
             print_config();
-            
-            
+
+            std::cout << "calllll3" << std::endl;
+
             /* Main loop */
             for(iter=0; iter < niters; iter++) {
                 logstream(LOG_INFO) << "Start iteration: " << iter << std::endl;
@@ -808,7 +815,8 @@ namespace graphchi {
                         scheduler->has_new_tasks = false; // Kind of misleading since scheduler may still have tasks - but no new tasks.
                     }
                 }
-                
+                std::cout << "calllll4" << std::endl;
+
                 /* Now clear scheduler bits for the interval */
                 if (scheduler != NULL)
                     scheduler->new_iteration(iter);
@@ -835,7 +843,8 @@ namespace graphchi {
                             }
                       //  }
                     }
-                    
+                    std::cout << "calllll5" << std::endl;
+
                     /* Determine interval limits */
                     vid_t interval_st = get_interval_start(exec_interval);
                     vid_t interval_en = get_interval_end(exec_interval);
@@ -858,7 +867,8 @@ namespace graphchi {
                     sub_interval_st = interval_st;
                     logstream(LOG_INFO) << chicontext.runtime() << "s: Starting: " 
                     << sub_interval_st << " -- " << interval_en << std::endl;
-                    
+                    std::cout << "calllll6" << std::endl;
+
                     while (sub_interval_st <= interval_en) {
                         
                         modification_lock.lock();
@@ -878,19 +888,25 @@ namespace graphchi {
                             modification_lock.unlock();
                             continue;
                         }
-                        
+                        std::cout << "calllll7" << std::endl;
+
                         /* Initialize vertices */
                         int nvertices = sub_interval_en - sub_interval_st + 1;
                         graphchi_edge<EdgeDataType> * edata = NULL;
                         
                         std::vector<svertex_t> vertices(nvertices, svertex_t());
+
+                        std::cout << "calllll7.2" << std::endl;
+
                         logstream(LOG_DEBUG) << "Allocation " << nvertices << " vertices, sizeof:" << sizeof(svertex_t)
                         << " total:" << nvertices * sizeof(svertex_t) << std::endl;
                         init_vertices(vertices, edata);
-                        
+                        std::cout << "calllll7.3" << std::endl;
+
                         /* Load data */
-                        load_before_updates(vertices);                        
-                        
+                        load_before_updates(vertices);
+                        std::cout << "calllll7.5" << std::endl;
+
                         modification_lock.unlock();
                         
                         logstream(LOG_INFO) << "Start updates" << std::endl;
@@ -904,8 +920,9 @@ namespace graphchi {
                             exec_updates_inmemory_mode(userprogram, vertices); 
                         }
                         logstream(LOG_INFO) << "Finished updates" << std::endl;
-                        
-                        
+
+                        std::cout << "calllll8" << std::endl;
+
                         /* Save vertices */
                         if (!disable_vertexdata_storage) {
                             save_vertices(vertices);
@@ -919,6 +936,7 @@ namespace graphchi {
                         }
                        
                     } // while subintervals
+                    std::cout << "calllll9" << std::endl;
 
                     if (memoryshard->loaded() && (save_edgesfiles_after_inmemmode || !is_inmemory_mode())) {
                         memoryshard->commit(modifies_inedges, modifies_outedges & !disable_outedges);
@@ -937,7 +955,8 @@ namespace graphchi {
                 
                 if (!is_inmemory_mode())  // Run sepately
                     userprogram.after_iteration(iter, chicontext);
-                
+                std::cout << "calllll10" << std::endl;
+
                 /* Move the sliding shard of the current interval to correct position and flush
                  writes of all shards for next iteration. */
                 for(int p=0; p<nshards; p++) {
@@ -1054,8 +1073,8 @@ namespace graphchi {
             if (!b) {
                 logstream(LOG_ERROR) << "With dynamic edge data, you cannot disable determinic parallelism." << std::endl;
                 logstream(LOG_ERROR) << "Otherwise race conditions would corrupt the structure of the data." << std::endl;
-                assert(b);
-                return;
+                //assert(b);
+                //return;
             }
 #endif
             enable_deterministic_parallelism = b;
@@ -1108,6 +1127,9 @@ namespace graphchi {
         void reinitialize_edge_data(ET zerovalue) {
             
             for(int p=0; p < nshards; p++) {
+                std::cout << "engine: " << sizeof(ET) << std::endl;
+                std::cout << "blockread: " << blocksize << std::endl;
+
                 std::string edatashardname =  filename_shard_edata<ET>(base_filename, p, nshards);
                 std::string dirname = dirname_shard_edata_block(edatashardname, blocksize);
                 size_t edatasize = get_shard_edata_filesize<ET>(edatashardname);

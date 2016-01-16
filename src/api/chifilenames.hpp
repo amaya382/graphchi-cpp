@@ -118,10 +118,25 @@ namespace graphchi {
     
     template <typename EdgeDataType>
     static size_t get_shard_edata_filesize(std::string edata_shardname) {
+        std::cout << ":::::" << edata_shardname << std::endl;
         size_t fsize;
         std::string fname = edata_shardname + ".size";
         std::ifstream ifs(fname.c_str());
+
+        std::cout << ":::::>" << fname.c_str() << std::endl;
+
+        if(!ifs)
+            std::cout << "null" << std::endl;
+
         if (!ifs.good()) {
+            std::cout << "bad: " << ifs.bad() << std::endl;
+            std::cout << "eof: " << ifs.eof() << std::endl;
+            std::cout << "fail: " << ifs.fail() << std::endl;
+            std::cout << "failbit: " << std::ios::failbit << std::endl;
+            std::cout << "eofbit: " << std::ios::eofbit << std::endl;
+            std::cout << "badbit: " << std::ios::badbit << std::endl;
+            std::cout << "goodbit: " << std::ios::goodbit << std::endl;
+
             logstream(LOG_FATAL) << "Could not load " << fname << ". Preprocessing forgotten?" << std::endl;
             assert(ifs.good());
         }

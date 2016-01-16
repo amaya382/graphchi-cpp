@@ -66,6 +66,7 @@ public:
     chivector(uint16_t sz, uint16_t cap, T * dataptr) : data(dataptr) {
         nsize = sz;
         ncapacity = cap;
+        //std::cout << "sz: " << sz << ", cap: " << cap << std::endl;
         assert(cap >= nsize);
         extensions = NULL;
     }
@@ -113,6 +114,14 @@ public:
     // TODO: addmany()
     
     T get(int idx) {
+        if (idx >= ncapacity) {
+            return (* extensions)[idx - (int)ncapacity];
+        } else {
+            return data[idx];
+        }
+    }
+
+    T operator[](int idx){
         if (idx >= ncapacity) {
             return (* extensions)[idx - (int)ncapacity];
         } else {

@@ -88,7 +88,7 @@ namespace graphchi {
     
     static void parse(dummy &x, const char *s) {}
     
-    
+#ifdef DYNAMICEDATA
     /**
      * Special templated parser for PairContainers.
      */
@@ -97,6 +97,13 @@ namespace graphchi {
         parse(x.left, s);
         parse(x.right, s);
     }
+#else
+    template <typename T>
+    void parse_multiple(PairContainer<T> &x, const char * s) {
+        parse_multiple(x.left, s);
+        parse_multiple(x.right, s);
+    }
+#endif
     
     static void parse(long &x, const char * s) {
         x = atol(s);

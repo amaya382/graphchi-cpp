@@ -97,6 +97,8 @@ namespace graphchi {
         }
         
         void write(uint8_t ** outdata, int & size) {
+            std::cout << "calllsssssssssssssssslled" << std::endl;
+
             // First compute size
             size = 0;
             for(int i=0; i < nitems; i++) {
@@ -109,7 +111,6 @@ namespace graphchi {
                 ET & vec = chivecs[i];
                 ((uint16_t *) ptr)[0] = vec.size();
                 ((uint16_t *) ptr)[1] = vec.capacity();
-
                 ptr += sizeof(typename ET::sizeword_t);
                 vec.write((typename ET::element_type_t *)  ptr);
                 ptr += vec.capacity() * sizeof(typename ET::element_type_t);

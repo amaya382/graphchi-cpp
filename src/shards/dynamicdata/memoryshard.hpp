@@ -223,6 +223,9 @@ namespace graphchi {
             
             while(true) {
                 std::string block_filename = filename_shard_edata_block(filename_edata, blockid, blocksize);
+
+                std::cout << "blockread: " << block_filename << std::endl;
+
                 if (file_exists(block_filename)) {
                     size_t fsize = get_block_uncompressed_size(block_filename, std::min(edatafilesize - blocksize * blockid, blocksize)); //std::min(edatafilesize - blocksize * blockid, blocksize);
                     compressedsize += get_filesize(block_filename);
@@ -258,6 +261,9 @@ namespace graphchi {
                 std::string block_filename = filename_shard_edata_block(filename_edata, blockid, blocksize);
                 size_t fsize = get_block_uncompressed_size(block_filename, std::min(edatafilesize - blocksize * blockid, blocksize)); //std::min(edatafilesize - blocksize * blockid, blocksize);
                 int nedges = std::min(edatafilesize - blocksize * blockid, blocksize) / sizeof(int);
+
+                std::cout << "-0askdfjasf" << std::endl;
+
                 dynamicblocks[blockid] = new dynamicdata_block<ET>(nedges, (uint8_t*) edgedata[blockid], fsize);
             }
         }
@@ -373,20 +379,38 @@ namespace graphchi {
                         check_block_initialized(blockid);
                         vertex->add_outedge(target, (only_adjacency ? NULL : dynamicblocks[blockid]->edgevec((edgeptr % blocksize)/sizeof(int))), false);
                     }
-                    
+                    std::cout << "calllll7.555" << std::endl;
+
                     if (target >= window_st)  {
                         if (target <= window_en) {                        /* In edge */
                             if (inedges) {
+                                std::cout << "calllll7.5909900000000" << std::endl;
+
                                 svertex_t & dstvertex = prealloc[target - window_st];
+
+                                std::cout << "calllll7.590990111111" << std::endl;
+
                                 if (dstvertex.scheduled) {
+                                    std::cout << "calllll7.5909903333=" << std::endl;
+
                                     any_edges = true;
                                     //  assert(only_adjacency ||  edgeptr < edatafilesize);
                                     check_block_initialized(blockid);
+                                    std::cout << "calllll7.590990" << std::endl;
+
                                     ET * eptr = (only_adjacency ? NULL  : dynamicblocks[blockid]->edgevec((edgeptr % blocksize)/sizeof(int)));
+                                    std::cout << "calllll7.57666666" << std::endl;
 
                                     dstvertex.add_inedge(vid,  (only_adjacency ? NULL : eptr), false);
+
+                                    std::cout << "calllll7.577777" << std::endl;
+
+
                                     dstvertex.parallel_safe = dstvertex.parallel_safe && (vertex == NULL); // Avoid if
                                 }
+
+                                std::cout << "calllll7.59099022222" << std::endl;
+
                             }
                         } else { // Note, we cannot skip if there can be "special edges". FIXME so dirty.
                             // This vertex has no edges any more for this window, bail out

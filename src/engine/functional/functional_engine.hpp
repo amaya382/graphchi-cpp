@@ -53,10 +53,12 @@ namespace graphchi {
             if (!this->memoryshard->loaded()) {
                 this->memoryshard->load();
             }
-            
+            std::cout << "callllfxxxxxl7.5" << std::endl;
+
             /* Load vertex edges from memory shard */
             this->memoryshard->load_vertices(this->sub_interval_st, this->sub_interval_en, vertices, true, false);
-            
+            std::cout << "calllll7.6" << std::endl;
+
             /* Load vertices */ 
             this->vertex_data_handler->load(this->sub_interval_st, this->sub_interval_en);
             

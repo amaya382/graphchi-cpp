@@ -170,6 +170,10 @@ namespace graphchi {
         }
         
         void write_block(vdblock &block) {
+            std::cout << "calllsssssssssssssssslled2" << std::endl;
+
+
+
             int realsize;
             uint8_t * outdata;
             block.dblock->write(&outdata, realsize);

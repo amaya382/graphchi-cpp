@@ -280,7 +280,7 @@ namespace graphchi {
                 doneptr = (int *) malloc(nblocks * sizeof(int));
                 for(int i=0; i < nblocks; i++) doneptr[i] = 1;
             }
-            
+
             while(blockid < nblocks) {
                 std::string block_filename = filename_shard_edata_block(filename_edata, blockid, blocksize);
                 if (file_exists(block_filename)) {

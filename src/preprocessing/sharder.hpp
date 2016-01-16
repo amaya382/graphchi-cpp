@@ -484,7 +484,7 @@ namespace graphchi {
             int len = (int) (bufptr - buf);
             
             m.start_time("edata_flush");
-            
+            std::cout << "blockwrite: " << compressed_block_size << std::endl;
             std::string block_filename = filename_shard_edata_block(shard_filename, blockid, compressed_block_size);
             int f = open(block_filename.c_str(), O_RDWR | O_CREAT, S_IROTH | S_IWOTH | S_IWUSR | S_IRUSR);
             write_compressed(f, buf, len);
@@ -623,7 +623,8 @@ namespace graphchi {
             size_t edgecounter = 0;
             curadjfilepos = 0;
             logstream(LOG_INFO) << "Starting final processing for shard: " << shard << std::endl;
-            
+            std::cout << "sharder: " << sizeof(FinalEdgeDataType) << std::endl;
+            std::cout << "blockwrite2: " << compressed_block_size << std::endl;
             std::string fname = filename_shard_adj(basefilename, shard, nshards);
             std::string edfname = filename_shard_edata<FinalEdgeDataType>(basefilename, shard, nshards);
             std::string edblockdirname = dirname_shard_edata_block(edfname, compressed_block_size);
@@ -833,6 +834,10 @@ namespace graphchi {
                 edata_flush<FinalEdgeDataType>(ebuf, ebufptr, edfname, tot_edatabytes);
                 
                 std::string sizefilename = edfname + ".size";
+
+                std::cout << "filename: " << sizefilename.c_str() << std::endl;
+
+
                 std::ofstream ofs(sizefilename.c_str());
 #ifndef DYNAMICEDATA
                 ofs << tot_edatabytes;
