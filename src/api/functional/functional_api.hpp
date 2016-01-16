@@ -65,7 +65,7 @@ namespace graphchi {
         virtual EdgeDataType zero() = 0;
         virtual EdgeDataType gather(graphchi_context &ginfo, vertex_info& vertex, vid_t nbid, EdgeDataType nb_val)= 0;
         virtual EdgeDataType plus(EdgeDataType acc, EdgeDataType toadd) = 0;
-        virtual VertexDataType apply(graphchi_context &ginfo, vertex_info& vertex, EdgeDataType sum) = 0;
+        virtual VertexDataType apply(graphchi_context &ginfo, vertex_info& vertex, VertexDataType val, EdgeDataType sum) = 0;
         virtual EdgeDataType scatter(graphchi_context &ginfo, vertex_info& vertex, vid_t nb_id, VertexDataType val) = 0;
     };
 

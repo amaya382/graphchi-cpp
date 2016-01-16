@@ -133,7 +133,7 @@ namespace graphchi {
         }
 
         void ready(graphchi_context &gcontext_) {
-            this->set_data(kernel.apply(gcontext_, vinfo, acc));
+            this->set_data(kernel.apply(gcontext_, vinfo, this->get_data(), acc));
         }
 
         inline void add_outedge(vid_t dst, ET *ptr, bool special_edge) {

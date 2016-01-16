@@ -34,7 +34,7 @@
 #define RANDOMRESETPROB 0.15
 #define GRAPHCHI_DISABLE_COMPRESSION
 
-//#define HTM
+#define HTM
 //#define RTM
 //#define HLE
 
@@ -67,7 +67,7 @@ struct pagerank_kernel : public functional_kernel<float, float> {
         return acc + toadd;
     }
     
-    float apply(graphchi_context &ginfo, vertex_info& vertex, float sum) {
+    float apply(graphchi_context &ginfo, vertex_info& vertex, float val, float sum) {
         assert(ginfo.nvertices > 0);
         return RANDOMRESETPROB + (1 - RANDOMRESETPROB) * sum;
     }

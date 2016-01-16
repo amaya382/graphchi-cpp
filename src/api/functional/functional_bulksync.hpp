@@ -6,19 +6,19 @@
  * @section LICENSE
  *
  * Copyright [2012] [Aapo Kyrola, Guy Blelloch, Carlos Guestrin / Carnegie Mellon University]
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- 
+
  *
  * @section DESCRIPTION
  *
@@ -48,7 +48,7 @@
 #include "graphchi_types.hpp"
 
 namespace graphchi {
-    
+
     template <typename KERNEL>
     class functional_vertex_unweighted_bulksync : public graphchi_vertex<typename KERNEL::VertexDataType, PairContainer<typename KERNEL::EdgeDataType>> {
     public:
@@ -60,13 +60,13 @@ namespace graphchi {
         KERNEL kernel;
 
         ET acc;
-        
+
         vertex_info vinfo;
         graphchi_context * gcontext;
-        
+
         functional_vertex_unweighted_bulksync() : graphchi_vertex<VT, P_ET> () {}
-        
-        functional_vertex_unweighted_bulksync(graphchi_context &ginfo, vid_t _id, int indeg, int outdeg) : 
+
+        functional_vertex_unweighted_bulksync(graphchi_context &ginfo, vid_t _id, int indeg, int outdeg) :
         graphchi_vertex<VT, P_ET> (_id, NULL, NULL, indeg, outdeg) {
             vinfo.indegree = indeg;
             vinfo.outdegree = outdeg;
@@ -78,20 +78,20 @@ namespace graphchi {
         vid_t id() const {
             return vinfo.vertexid;
         }
-        
-        functional_vertex_unweighted_bulksync(vid_t _id, 
+
+        functional_vertex_unweighted_bulksync(vid_t _id,
                                               graphchi_edge<P_ET> * iptr,
                                               graphchi_edge<P_ET> * optr,
-                                              int indeg, 
+                                              int indeg,
                                               int outdeg) {
             assert(false); // This should never be called.
         }
-        
+
         void first_iteration(graphchi_context &ginfo) {
             this->set_data(kernel.init(ginfo, vinfo));
             gcontext = &ginfo;
         }
-        
+
         // Optimization: as only memshard (not streaming shard) creates inedgers,
         // we do not need atomic instructions here!
         inline void add_inedge(vid_t src, P_ET * ptr, bool special_edge) {
@@ -138,24 +138,24 @@ namespace graphchi {
 #endif
             }
         }
-        
+
         void ready(graphchi_context &ginfo) {
-            this->set_data(kernel.apply(*gcontext, vinfo, acc));
+            this->set_data(kernel.apply(*gcontext, vinfo, this->get_data(), acc));
         }
-        
+
         inline void add_outedge(vid_t dst, P_ET * ptr, bool special_edge) {
-            typename KERNEL::EdgeDataType newval = 
+            typename KERNEL::EdgeDataType newval =
                 kernel.scatter(*gcontext, vinfo, dst, this->get_data());
             P_ET paircont = *ptr;
             paircont.set_newval(gcontext->iteration, newval);
             *ptr = paircont;
         }
-        
+
         bool computational_edges() {
             return true;
         }
-        
-        /** 
+
+        /**
           * We also need to read the outedges, because we need
           * to preserve the old value as well.
           */
@@ -163,48 +163,46 @@ namespace graphchi {
             return true;
         }
     };
-    
-    
-    
+
+
+
     template <typename KERNEL>
     class FunctionalProgramProxyBulkSync : public GraphChiProgram<typename KERNEL::VertexDataType,  PairContainer<typename KERNEL::EdgeDataType>, functional_vertex_unweighted_bulksync<KERNEL>  > {
-    public:  
-   
+    public:
+
         typedef typename KERNEL::VertexDataType VertexDataType;
         typedef PairContainer<typename KERNEL::EdgeDataType> EdgeDataType;
         typedef functional_vertex_unweighted_bulksync<KERNEL> fvertex_t;
-        
+
         /**
          * Called before an iteration starts.
          */
         void before_iteration(int iteration, graphchi_context &info) {
         }
-        
+
         /**
          * Called after an iteration has finished.
          */
         void after_iteration(int iteration, graphchi_context &ginfo) {
         }
-        
+
         /**
          * Called before an execution interval is started.
          */
-        void before_exec_interval(vid_t window_st, vid_t window_en, graphchi_context &ginfo) {        
+        void before_exec_interval(vid_t window_st, vid_t window_en, graphchi_context &ginfo) {
         }
-        
+
         
         /**
-         * Pagerank update function.
+         * update
          */
         void update(fvertex_t &v, graphchi_context &ginfo) {
             if (ginfo.iteration == 0) {
                 v.first_iteration(ginfo);
-            } else { 
+            } else {
                 v.ready(ginfo);
-            }   
-            
+            }
         }
-        
     };
 }
 #endif
