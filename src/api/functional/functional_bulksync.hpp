@@ -35,9 +35,13 @@
 #ifndef GRAPHCHI_FUNCTIONAL_BULKSYNC_DEF
 #define GRAPHCHI_FUNCTIONAL_BULKSYNC_DEF
 
+#define NTHREADS 4
+#define THRESHOLD 20
+//#define FEATURE
+
 #include <assert.h>
 #include <immintrin.h>
-
+#include <vector>
 
 
 #include "api/graph_objects.hpp"
@@ -59,7 +63,11 @@ namespace graphchi {
 
         KERNEL kernel;
 
+#ifndef FEATURE
         ET acc;
+#else
+        ET acc[NTHREADS];//FIX ME
+#endif
 
         vertex_info vinfo;
         graphchi_context * gcontext;
@@ -71,7 +79,16 @@ namespace graphchi {
             vinfo.indegree = indeg;
             vinfo.outdegree = outdeg;
             vinfo.vertexid = _id;
+#ifndef FEATURE
             acc = kernel.zero();
+#else
+            if(indeg > THRESHOLD)
+                for(int i = 0; i < omp_get_max_threads(); i++)
+                    acc[i] = kernel.zero();
+            else
+                acc[0] = kernel.zero();
+#endif
+
             gcontext = &ginfo;
         }
 
@@ -100,28 +117,41 @@ namespace graphchi {
                                                  vinfo,
                                                  src,
                                                  ptr->oldval(gcontext->iteration));
-#ifdef HTM
-#if !defined(RTM) && !defined(HLE)
-                __transaction_relaxed
-#else
-#ifdef RTM
-                retry:
-                int st = _xbegin();
-                if (st == _XBEGIN_STARTED) {
-#else
-#ifdef HLE
-                int lock;
-                while (__atomic_exchange_n(&lock, 1, __ATOMIC_ACQUIRE | __ATOMIC_HLE_ACQUIRE))
-                    _mm_pause();
-#endif
-#endif
-#endif
-#else
-                get_lock(vinfo.vertexid).lock();
+
+#ifdef FEATURE
+                if(vinfo.indegree > THRESHOLD) {
+                    int num = omp_get_thread_num();
+                    acc[num] = kernel.plus(acc[num], val);
+                } else
 #endif
                 {
-                    acc = kernel.plus(acc, val);
-                }
+
+#ifdef HTM
+#if !defined(RTM) && !defined(HLE)
+                    __transaction_relaxed
+#else
+#ifdef RTM
+                    retry:
+                    int st = _xbegin();
+                    if (st == _XBEGIN_STARTED) {
+#else
+#ifdef HLE
+                    int lock;
+                    while (__atomic_exchange_n(&lock, 1, __ATOMIC_ACQUIRE | __ATOMIC_HLE_ACQUIRE))
+                        _mm_pause();
+#endif
+#endif
+#endif
+#else
+                    get_lock(vinfo.vertexid).lock();
+#endif
+                    {
+#ifndef FEATURE
+                        acc = kernel.plus(acc, val);
+#else
+                        acc[0] = kernel.plus(acc[0], val);
+#endif
+                    }
 #ifdef HTM
 #ifdef RTM
                     _xend();
@@ -134,13 +164,25 @@ namespace graphchi {
 #endif
 #endif
 #else
-                get_lock(vinfo.vertexid).unlock();
+                    get_lock(vinfo.vertexid).unlock();
 #endif
+                }
             }
         }
 
+#ifdef FEATURE
+        void combine(){
+            for(int i = 1; i < omp_get_max_threads(); i++)
+                acc[0] = kernel.plus(acc[0], acc[i]);
+        }
+#endif
+
         void ready(graphchi_context &ginfo) {
+#ifndef FEATURE
             this->set_data(kernel.apply(*gcontext, vinfo, this->get_data(), acc));
+#else
+            this->set_data(kernel.apply(*gcontext, vinfo, this->get_data(), acc[0]));
+#endif
         }
 
         inline void add_outedge(vid_t dst, P_ET * ptr, bool special_edge) {
@@ -200,6 +242,10 @@ namespace graphchi {
             if (ginfo.iteration == 0) {
                 v.first_iteration(ginfo);
             } else {
+#ifdef FEATURE
+                if(v.vinfo.indegree > THRESHOLD)
+                    v.combine();
+#endif
                 v.ready(ginfo);
             }
         }
