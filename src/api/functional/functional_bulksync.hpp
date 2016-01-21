@@ -36,7 +36,7 @@
 #define GRAPHCHI_FUNCTIONAL_BULKSYNC_DEF
 
 #define NTHREADS 4
-#define THRESHOLD 20
+#define THRESHOLD 10
 //#define FEATURE
 
 #include <assert.h>
@@ -82,8 +82,8 @@ namespace graphchi {
 #ifndef FEATURE
             acc = kernel.zero();
 #else
-            if(indeg > THRESHOLD)
-                for(int i = 0; i < omp_get_max_threads(); i++)
+            if (indeg > THRESHOLD)
+                for (int i = 0, nthreads = omp_get_max_threads(); i < nthreads; i++)
                     acc[i] = kernel.zero();
             else
                 acc[0] = kernel.zero();
@@ -104,7 +104,7 @@ namespace graphchi {
             assert(false); // This should never be called.
         }
 
-        void first_iteration(graphchi_context &ginfo) {
+        inline void first_iteration(graphchi_context &ginfo) {
             this->set_data(kernel.init(ginfo, vinfo));
             gcontext = &ginfo;
         }
@@ -171,13 +171,13 @@ namespace graphchi {
         }
 
 #ifdef FEATURE
-        void combine(){
-            for(int i = 1; i < omp_get_max_threads(); i++)
+        inline void combine(){
+            for(int i = 1, nthreads = omp_get_max_threads(); i < nthreads; i++)
                 acc[0] = kernel.plus(acc[0], acc[i]);
         }
 #endif
 
-        void ready(graphchi_context &ginfo) {
+        inline void ready(graphchi_context &ginfo) {
 #ifndef FEATURE
             this->set_data(kernel.apply(*gcontext, vinfo, this->get_data(), acc));
 #else
@@ -193,7 +193,7 @@ namespace graphchi {
             *ptr = paircont;
         }
 
-        bool computational_edges() {
+        inline bool computational_edges() {
             return true;
         }
 
@@ -201,7 +201,7 @@ namespace graphchi {
           * We also need to read the outedges, because we need
           * to preserve the old value as well.
           */
-        static bool read_outedges() {
+        inline static bool read_outedges() {
             return true;
         }
     };
@@ -219,26 +219,26 @@ namespace graphchi {
         /**
          * Called before an iteration starts.
          */
-        void before_iteration(int iteration, graphchi_context &info) {
+        inline void before_iteration(int iteration, graphchi_context &info) {
         }
 
         /**
          * Called after an iteration has finished.
          */
-        void after_iteration(int iteration, graphchi_context &ginfo) {
+        inline void after_iteration(int iteration, graphchi_context &ginfo) {
         }
 
         /**
          * Called before an execution interval is started.
          */
-        void before_exec_interval(vid_t window_st, vid_t window_en, graphchi_context &ginfo) {
+        inline void before_exec_interval(vid_t window_st, vid_t window_en, graphchi_context &ginfo) {
         }
 
         
         /**
          * update
          */
-        void update(fvertex_t &v, graphchi_context &ginfo) {
+        inline void update(fvertex_t &v, graphchi_context &ginfo) {
             if (ginfo.iteration == 0) {
                 v.first_iteration(ginfo);
             } else {

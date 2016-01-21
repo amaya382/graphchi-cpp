@@ -51,28 +51,28 @@ using namespace graphchi;
 
 struct pagerank_kernel : public functional_kernel<float, float> {
     
-    float init(graphchi_context &ginfo, vertex_info& vertex) {
+    inline float init(graphchi_context &ginfo, vertex_info& vertex) {
         return 1.0;
     }
     
-    float zero() {
+    inline float zero() {
         return 0.0;
     }
     
-    float gather(graphchi_context &ginfo, vertex_info& vertex, vid_t nb_id, float nb_val) {
+    inline float gather(graphchi_context &ginfo, vertex_info& vertex, vid_t nb_id, float nb_val) {
         return nb_val;
     }
     
-    float plus(float acc, float toadd) {
+    inline float plus(float acc, float toadd) {
         return acc + toadd;
     }
     
-    float apply(graphchi_context &ginfo, vertex_info& vertex, float val, float sum) {
+    inline float apply(graphchi_context &ginfo, vertex_info& vertex, float val, float sum) {
         assert(ginfo.nvertices > 0);
         return RANDOMRESETPROB + (1 - RANDOMRESETPROB) * sum;
     }
     
-    float scatter(graphchi_context &ginfo, vertex_info& vertex, vid_t nb_id, float val) {
+    inline float scatter(graphchi_context &ginfo, vertex_info& vertex, vid_t nb_id, float val) {
         assert(vertex.outdegree > 0);
         return val / vertex.outdegree;
     }

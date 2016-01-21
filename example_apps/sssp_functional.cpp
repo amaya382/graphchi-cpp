@@ -16,19 +16,19 @@ using namespace graphchi;
 
 struct sssp_kernel : public functional_kernel<int, int> {
 
-    int init(graphchi_context &ginfo, vertex_info& vertex) {
+    inline int init(graphchi_context &ginfo, vertex_info& vertex) {
         return vertex.vertexid == 0 ? 0 : INT_MIN;
     }
 
-    int zero() {
+    inline int zero() {
         return INT_MIN;
     }
 
-    int gather(graphchi_context &ginfo, vertex_info& vertex, vid_t nb_id, int nb_val) {
+    inline int gather(graphchi_context &ginfo, vertex_info& vertex, vid_t nb_id, int nb_val) {
         return nb_val;
     }
 
-    int plus(int acc, int toadd) {
+    inline int plus(int acc, int toadd) {
         if(acc < 0)
             return toadd;
 
@@ -38,14 +38,14 @@ struct sssp_kernel : public functional_kernel<int, int> {
         return std::min(acc, toadd);
     }
 
-    int apply(graphchi_context &ginfo, vertex_info& vertex, int val, int sum) {
+    inline int apply(graphchi_context &ginfo, vertex_info& vertex, int val, int sum) {
         assert(ginfo.nvertices > 0);
 
         return sum < 0 ? val
                        : std::min(sum, val < 0 ? INT_MAX : val);
     }
 
-    int scatter(graphchi_context &ginfo, vertex_info& vertex, vid_t nb_id, int val) {
+    inline int scatter(graphchi_context &ginfo, vertex_info& vertex, vid_t nb_id, int val) {
         assert(vertex.outdegree > 0);
         return val + 1;
     }
