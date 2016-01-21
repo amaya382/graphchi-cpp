@@ -14,10 +14,12 @@
 
 using namespace graphchi;
 
+int src;
+
 struct sssp_kernel : public functional_kernel<int, int> {
 
     inline int init(graphchi_context &ginfo, vertex_info& vertex) {
-        return vertex.vertexid == 0 ? 0 : INT_MIN;
+        return vertex.vertexid == src ? 0 : INT_MIN;
     }
 
     inline int zero() {
@@ -59,6 +61,7 @@ int main(int argc, const char ** argv) {
     int niters = get_option_int("niters", 100);
     bool onlytop = get_option_int("onlytop", 0);
     int ntop = get_option_int("top", 20);
+    src = get_option_int("src", 0);
     std::string mode = get_option_string("mode", "sync");
 
     if (onlytop == 0) {
