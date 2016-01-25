@@ -36,8 +36,8 @@
 #define GRAPHCHI_FUNCTIONAL_BULKSYNC_DEF
 
 #define NTHREADS 4
-#define THRESHOLD 10
-//#define FEATURE
+#define THRESHOLD 0
+#define FEATURE
 
 #include <assert.h>
 #include <immintrin.h>
@@ -52,6 +52,10 @@
 #include "graphchi_types.hpp"
 
 namespace graphchi {
+#ifdef FEATURE
+    int offset = 0;
+    float acc[NTHREADS * 16000000];//experimental
+#endif
 
     template <typename KERNEL>
     class functional_vertex_unweighted_bulksync : public graphchi_vertex<typename KERNEL::VertexDataType, PairContainer<typename KERNEL::EdgeDataType>> {
@@ -66,7 +70,8 @@ namespace graphchi {
 #ifndef FEATURE
         ET acc;
 #else
-        ET acc[NTHREADS];//FIX ME
+        //ET acc[NTHREADS];//FIX ME
+        int virtual_id;
 #endif
 
         vertex_info vinfo;
@@ -79,14 +84,16 @@ namespace graphchi {
             vinfo.indegree = indeg;
             vinfo.outdegree = outdeg;
             vinfo.vertexid = _id;
+
 #ifndef FEATURE
             acc = kernel.zero();
 #else
+            virtual_id = (_id - offset) * NTHREADS;
             if (indeg > THRESHOLD)
                 for (int i = 0, nthreads = omp_get_max_threads(); i < nthreads; i++)
-                    acc[i] = kernel.zero();
+                    acc[virtual_id + i] = kernel.zero();
             else
-                acc[0] = kernel.zero();
+                acc[virtual_id] = kernel.zero();
 #endif
 
             gcontext = &ginfo;
@@ -120,7 +127,7 @@ namespace graphchi {
 
 #ifdef FEATURE
                 if(vinfo.indegree > THRESHOLD) {
-                    int num = omp_get_thread_num();
+                    int num = virtual_id + omp_get_thread_num();
                     acc[num] = kernel.plus(acc[num], val);
                 } else
 #endif
@@ -149,7 +156,7 @@ namespace graphchi {
 #ifndef FEATURE
                         acc = kernel.plus(acc, val);
 #else
-                        acc[0] = kernel.plus(acc[0], val);
+                        acc[virtual_id] = kernel.plus(acc[virtual_id], val);
 #endif
                     }
 #ifdef HTM
@@ -173,7 +180,7 @@ namespace graphchi {
 #ifdef FEATURE
         inline void combine(){
             for(int i = 1, nthreads = omp_get_max_threads(); i < nthreads; i++)
-                acc[0] = kernel.plus(acc[0], acc[i]);
+                acc[virtual_id] = kernel.plus(acc[virtual_id], acc[virtual_id + i]);
         }
 #endif
 
@@ -181,7 +188,7 @@ namespace graphchi {
 #ifndef FEATURE
             this->set_data(kernel.apply(*gcontext, vinfo, this->get_data(), acc));
 #else
-            this->set_data(kernel.apply(*gcontext, vinfo, this->get_data(), acc[0]));
+            this->set_data(kernel.apply(*gcontext, vinfo, this->get_data(), acc[virtual_id]));
 #endif
         }
 
@@ -232,6 +239,9 @@ namespace graphchi {
          * Called before an execution interval is started.
          */
         inline void before_exec_interval(vid_t window_st, vid_t window_en, graphchi_context &ginfo) {
+#ifdef FEATURE
+            offset = window_st;
+#endif
         }
 
         
