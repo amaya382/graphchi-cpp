@@ -37,11 +37,12 @@
 
 #define NTHREADS 4
 #define THRESHOLD 0
-#define FEATURE
+//#define FEATURE
 
 #include <assert.h>
 #include <immintrin.h>
 #include <vector>
+#include <atomic>
 
 
 #include "api/graph_objects.hpp"
@@ -68,9 +69,13 @@ namespace graphchi {
         KERNEL kernel;
 
 #ifndef FEATURE
-        ET acc;
+#ifdef ATOMIC
+        ET e{};
+        std::atomic<ET> acc{e};
 #else
-        //ET acc[NTHREADS];//FIX ME
+        ET acc;
+#endif
+#else
         int virtual_id;
 #endif
 
@@ -86,7 +91,11 @@ namespace graphchi {
             vinfo.vertexid = _id;
 
 #ifndef FEATURE
+#ifdef ATOMIC
+            acc.store(kernel.zero());
+#else
             acc = kernel.zero();
+#endif
 #else
             virtual_id = (_id - offset) * NTHREADS;
             if (indeg > THRESHOLD)
@@ -98,6 +107,23 @@ namespace graphchi {
 
             gcontext = &ginfo;
         }
+
+#ifdef ATOMIC
+        functional_vertex_unweighted_bulksync(const functional_vertex_unweighted_bulksync &obj)
+                : acc(obj.acc.load()){ }
+        functional_vertex_unweighted_bulksync(functional_vertex_unweighted_bulksync &&obj)
+                : acc(obj.acc.load()){ }
+        functional_vertex_unweighted_bulksync operator=(const functional_vertex_unweighted_bulksync &obj){
+            if(this != &obj){
+                kernel = obj.kernel;
+                e = obj.e;
+                acc.store(obj.acc.load());
+                vinfo = obj.vinfo;
+                gcontext = obj.gcontext;
+            }
+            return *this;
+        }
+#endif
 
         vid_t id() const {
             return vinfo.vertexid;
@@ -124,6 +150,14 @@ namespace graphchi {
                                                  vinfo,
                                                  src,
                                                  ptr->oldval(gcontext->iteration));
+#ifdef ATOMIC
+                while(true) {
+                    ET el = acc.load();
+                    ET res = kernel.plus(el, val);
+                    if(acc.compare_exchange_strong(el, res))
+                        break;
+                }
+#else
 
 #ifdef FEATURE
                 if(vinfo.indegree > THRESHOLD) {
@@ -174,6 +208,7 @@ namespace graphchi {
                     get_lock(vinfo.vertexid).unlock();
 #endif
                 }
+#endif
             }
         }
 
@@ -186,7 +221,11 @@ namespace graphchi {
 
         inline void ready(graphchi_context &ginfo) {
 #ifndef FEATURE
+#ifdef ATOMIC
+            this->set_data(kernel.apply(*gcontext, vinfo, this->get_data(), acc.load()));
+#else
             this->set_data(kernel.apply(*gcontext, vinfo, this->get_data(), acc));
+#endif
 #else
             this->set_data(kernel.apply(*gcontext, vinfo, this->get_data(), acc[virtual_id]));
 #endif

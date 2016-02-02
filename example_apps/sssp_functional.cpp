@@ -1,4 +1,5 @@
-#define HTM
+//#define ATOMIC
+//#define HTM
 //#define RTM
 //#define HLE
 

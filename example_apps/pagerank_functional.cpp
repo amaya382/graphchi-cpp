@@ -34,7 +34,8 @@
 #define RANDOMRESETPROB 0.15
 #define GRAPHCHI_DISABLE_COMPRESSION
 
-#define HTM
+//#define ATOMIC
+//#define HTM
 //#define RTM
 //#define HLE
 

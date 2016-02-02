@@ -34,6 +34,7 @@
 #define RANDOMRESETPROB 0.15
 #define GRAPHCHI_DISABLE_COMPRESSION
 
+//#define ATOMIC
 //#define HTM
 //#define RTM
 //#define HLE
@@ -81,7 +82,7 @@ struct heavy_kernel : public functional_kernel<float, float> {
 
     void load() {
         volatile int x = 0;
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < 10; i++)
             x++;
     }
 }; 
